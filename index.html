@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cuckoo Hashing — Interactive Simulation</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+body {
+  font-family:'DM Sans',sans-serif;
+  background:#111;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+  min-height:100vh;
+  padding:24px 16px;
+}
+
+.card {
+  width:1080px;
+  background:#FAFAFA;
+  border-radius:14px;
+  overflow:hidden;
+  box-shadow:0 24px 80px rgba(0,0,0,.7);
+}
+
+/* ── HEADER ── */
+.hdr {
+  background:linear-gradient(135deg, #B31B1B 0%, #8B1515 100%);
+  height:56px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 28px;
+}
+.hdr h1 { color:#fff; font-size:15px; font-weight:700; letter-spacing:-.02em }
+.hdr span {
+  font-family:'JetBrains Mono',monospace;
+  font-size:10px;
+  color:rgba(255,255,255,.45);
+  background:rgba(255,255,255,.1);
+  padding:3px 10px;
+  border-radius:4px;
+}
+
+/* ── PHASE INDICATOR ── */
+.phase-bar {
+  display:flex;
+  align-items:center;
+  border-bottom:1px solid #E8E8E8;
+  background:#FFF;
+  padding:0;
+  height:42px;
+}
+.phase-tab {
+  flex:1;
+  text-align:center;
+  font-family:'JetBrains Mono',monospace;
+  font-size:10.5px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  padding:10px 0;
+  color:#CCC;
+  position:relative;
+  transition:all .3s;
+  cursor:default;
+}
+.phase-tab::after {
+  content:'';
+  position:absolute;
+  bottom:0; left:20%; right:20%;
+  height:3px;
+  border-radius:3px 3px 0 0;
+  background:transparent;
+  transition:all .3s;
+}
+.phase-tab.active-build {
+  color:#2E7D32;
+  background:#F3FBF3;
+}
+.phase-tab.active-build::after {
+  background:#2E7D32;
+  left:10%; right:10%;
+}
+.phase-tab.active-probe {
+  color:#1A56CC;
+  background:#EEF3FF;
+}
+.phase-tab.active-probe::after {
+  background:#1A56CC;
+  left:10%; right:10%;
+}
+.phase-tab .phase-desc {
+  font-size:8px;
+  font-weight:400;
+  letter-spacing:.04em;
+  display:block;
+  margin-top:1px;
+  opacity:.7;
+}
+
+/* ── PROGRESS ── */
+.prog {
+  background:#F5F5F5;
+  border-bottom:1px solid #E8E8E8;
+  padding:10px 28px;
+  display:flex;
+  gap:6px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+.pdot {
+  width:10px; height:10px; border-radius:50%;
+  background:#DCDCDC; cursor:pointer;
+  transition:all .3s; flex-shrink:0;
+  border:2px solid transparent;
+}
+.pdot:hover { transform:scale(1.3) }
+.pdot.done-build { background:#2E7D32; border-color:#2E7D32 }
+.pdot.done-probe { background:#1A56CC; border-color:#1A56CC }
+.pdot.done-intro { background:#B31B1B; border-color:#B31B1B }
+.pdot.cur-build { background:#fff; border-color:#2E7D32; box-shadow:0 0 0 3px rgba(46,125,50,.25) }
+.pdot.cur-probe { background:#fff; border-color:#1A56CC; box-shadow:0 0 0 3px rgba(26,86,204,.25) }
+.pdot.cur-intro { background:#fff; border-color:#B31B1B; box-shadow:0 0 0 3px rgba(179,27,27,.25) }
+.psep {
+  width:1px; height:14px; background:#D0D0D0; margin:0 4px; flex-shrink:0;
+}
+.plab {
+  font-family:'JetBrains Mono',monospace;
+  font-size:10px; color:#AAA; margin-left:10px;
+}
+
+/* ── REHASH BANNER ── */
+.rehash {
+  display:none;
+  background:linear-gradient(135deg, #B31B1B, #D32F2F);
+  color:#fff;
+  font-family:'JetBrains Mono',monospace;
+  font-size:11px; font-weight:700;
+  text-align:center;
+  padding:10px;
+  letter-spacing:.06em;
+  animation:pulse-rehash 1.5s ease-in-out infinite;
+}
+@keyframes pulse-rehash { 0%,100%{opacity:1} 50%{opacity:.7} }
+
+/* ── STEP BANNER ── */
+.banner {
+  background:#FFF;
+  border-bottom:1px solid #EBEBEB;
+  padding:10px 28px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-height:44px;
+}
+.bpill {
+  font-family:'JetBrains Mono',monospace;
+  font-size:10px; font-weight:700;
+  color:#fff;
+  padding:4px 10px; border-radius:4px; flex-shrink:0;
+  min-width:36px; text-align:center;
+  white-space:nowrap;
+}
+.bpill.build-pill { background:#2E7D32 }
+.bpill.probe-pill { background:#1A56CC }
+.bpill.intro-pill { background:#B31B1B }
+.bpill.rehash-pill { background:#E65100 }
+.btxt { font-size:13px; color:#444; line-height:1.5 }
+.btxt strong { color:#1A1A1A }
+
+/* ── BODY GRID ── */
+.body {
+  display:grid;
+  grid-template-columns:200px 1px 1fr 1px 220px;
+  min-height:420px;
+}
+.sep { background:#EBEBEB }
+
+/* ── LEFT PANEL ── */
+.side-panel { padding:18px 18px }
+.slabel {
+  font-family:'JetBrains Mono',monospace;
+  font-size:8.5px; font-weight:700;
+  letter-spacing:.15em; text-transform:uppercase;
+  color:#AAA; margin-bottom:8px;
+}
+
+.key-box {
+  border:2px solid #E0E0E0;
+  border-radius:10px;
+  padding:14px 12px;
+  text-align:center;
+  margin-bottom:16px;
+  transition:all .35s;
+}
+.key-box .kb-key {
+  font-family:'JetBrains Mono',monospace;
+  font-size:20px; font-weight:700; color:#555;
+}
+.key-box .kb-sub {
+  font-size:10.5px; color:#AAA; margin-top:4px;
+  font-family:'JetBrains Mono',monospace;
+}
+.key-box.k0 { background:#EEF3FF; border-color:#91B4F5 } .key-box.k0 .kb-key { color:#1A56CC }
+.key-box.k1 { background:#FFF8E1; border-color:#FFCA80 } .key-box.k1 .kb-key { color:#E65100 }
+.key-box.k2 { background:#F3FBF3; border-color:#81C784 } .key-box.k2 .kb-key { color:#2E7D32 }
+.key-box.k3 { background:#F3E8FF; border-color:#CE93D8 } .key-box.k3 .kb-key { color:#6B21A8 }
+.key-box.k4 { background:#FFF3E0; border-color:#FFB74D } .key-box.k4 .kb-key { color:#BF360C }
+.key-box.evict { background:#FFF3F3; border-color:#EF9A9A } .key-box.evict .kb-key { color:#B31B1B }
+.key-box.dim { background:#F8F8F8; border-color:#E8E8E8 } .key-box.dim .kb-key { color:#CCC }
+.key-box.probe-box { background:#EEF3FF; border-color:#5C8FE6 } .key-box.probe-box .kb-key { color:#1A56CC }
+.key-box.probe-found { background:#EEF3FF; border-color:#1A56CC } .key-box.probe-found .kb-key { color:#1A56CC }
+.key-box.probe-miss { background:#FFF3F3; border-color:#EF9A9A } .key-box.probe-miss .kb-key { color:#B31B1B }
+
+/* ── HASH FUNCTION DISPLAY ── */
+.hash-funcs {
+  margin-bottom:16px;
+  padding:10px 12px;
+  background:#F5F5F5;
+  border-radius:8px;
+  border:1px solid #E8E8E8;
+}
+.hash-funcs .hf-title {
+  font-family:'JetBrains Mono',monospace;
+  font-size:8px; font-weight:700;
+  letter-spacing:.12em; text-transform:uppercase;
+  color:#AAA; margin-bottom:6px;
+}
+.hash-funcs .hf-row {
+  font-family:'JetBrains Mono',monospace;
+  font-size:10px; color:#777;
+  padding:2px 0;
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.hash-funcs .hf-row .fn-label {
+  font-weight:700; width:18px; flex-shrink:0;
+}
+
+/* ── TARGET ROWS ── */
+.targets { display:flex; flex-direction:column; gap:7px }
+.target-row {
+  display:flex; align-items:center; gap:8px;
+  padding:8px 10px; border-radius:7px;
+  border:1.5px solid #E8E8E8; background:#F8F8F8;
+  font-family:'JetBrains Mono',monospace;
+  font-size:11px; transition:all .35s;
+}
+.target-row .fn { font-size:10px; color:#AAA; width:18px; flex-shrink:0; font-weight:600 }
+.target-row .slot { font-weight:700; color:#555 }
+.target-row .status { margin-left:auto; font-size:9.5px; font-weight:700 }
+.target-row.try { background:#FFFDE7; border-color:#FFE082 } .target-row.try .status { color:#E65100 }
+.target-row.ok  { background:#F3FBF3; border-color:#81C784 } .target-row.ok .status  { color:#2E7D32 }
+.target-row.bad { background:#FFF3F3; border-color:#EF9A9A } .target-row.bad .status { color:#B31B1B }
+.target-row.dim { opacity:.4 }
+.target-row.found { background:#EEF3FF; border-color:#5C8FE6 } .target-row.found .status { color:#1A56CC }
+.target-row.miss { background:#FFF3F3; border-color:#EF9A9A } .target-row.miss .status { color:#B31B1B }
+.target-row.checking { background:#FFFDE7; border-color:#FFE082 } .target-row.checking .status { color:#E65100 }
+
+/* ── HASH TABLE ── */
+.table-panel { padding:18px 22px }
+.tp-label {
+  font-family:'JetBrains Mono',monospace;
+  font-size:8.5px; font-weight:700;
+  letter-spacing:.15em; text-transform:uppercase;
+  color:#AAA; margin-bottom:12px;
+}
+.htable { display:flex; flex-direction:column; gap:5px }
+.hrow { display:flex; align-items:center; gap:8px }
+.hidx {
+  font-family:'JetBrains Mono',monospace;
+  font-size:10px; color:#CCC;
+  width:24px; text-align:right; flex-shrink:0;
+}
+.hcell {
+  flex:1; height:42px; border-radius:8px;
+  border:2px solid #E8E8E8; background:#F6F6F6;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 12px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:13px; font-weight:700;
+  color:#CCC; transition:all .35s;
+}
+.hcell .hval { transition:all .35s }
+.hcell .htag { font-size:8.5px; font-weight:600; color:#CCC; transition:all .35s }
+.hcell.empty { border-style:dashed; color:#E0E0E0 }
+.hcell.k0 { background:#EEF3FF; border-color:#91B4F5 } .hcell.k0 .hval { color:#1A56CC } .hcell.k0 .htag { color:#91B4F5 }
+.hcell.k1 { background:#FFF8E1; border-color:#FFCA80 } .hcell.k1 .hval { color:#E65100 } .hcell.k1 .htag { color:#FFCA80 }
+.hcell.k2 { background:#F3FBF3; border-color:#81C784 } .hcell.k2 .hval { color:#2E7D32 } .hcell.k2 .htag { color:#81C784 }
+.hcell.k3 { background:#F3E8FF; border-color:#CE93D8 } .hcell.k3 .hval { color:#6B21A8 } .hcell.k3 .htag { color:#CE93D8 }
+.hcell.k4 { background:#FFF3E0; border-color:#FFB74D } .hcell.k4 .hval { color:#BF360C } .hcell.k4 .htag { color:#FFB74D }
+.hcell.target-h1 { box-shadow:0 0 0 3px rgba(26,86,204,.35); border-color:#1A56CC!important }
+.hcell.target-h2 { box-shadow:0 0 0 3px rgba(230,81,0,.35); border-color:#E65100!important }
+.hcell.just-in { background:#EBF7EC!important; border-color:#43A047!important }
+.hcell.just-in .hval { color:#2E7D32!important } .hcell.just-in .htag { color:#43A047!important }
+.hcell.evicting { background:#FFF3F3!important; border-color:#EF9A9A!important; animation:blink .7s ease-in-out 2 }
+.hcell.evicting .hval { color:#B31B1B!important }
+.hcell.cycle { border-color:#B31B1B!important; animation:pulse .8s ease-in-out infinite; box-shadow:0 0 0 3px rgba(179,27,27,.3) }
+.hcell.probe-hit { box-shadow:0 0 0 3px rgba(26,86,204,.4); border-color:#1A56CC!important; background:#DBEAFE!important }
+.hcell.probe-hit .hval { color:#1A56CC!important }
+.hcell.probe-check { box-shadow:0 0 0 3px rgba(230,165,0,.4); border-color:#E6A500!important }
+.hcell.probe-miss-cell { border-color:#EF9A9A!important; border-style:dashed!important; box-shadow:0 0 0 3px rgba(179,27,27,.2) }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+
+/* ── LOG PANEL ── */
+.log-panel { padding:18px 16px; overflow-y:auto; max-height:420px }
+.log-entries { display:flex; flex-direction:column; gap:5px }
+.log-entry {
+  font-family:'JetBrains Mono',monospace;
+  font-size:10px; padding:6px 9px; border-radius:5px;
+  border:1px solid #E8E8E8; background:#F8F8F8;
+  color:#555; line-height:1.55;
+}
+.log-entry.k0 { background:#EEF3FF; border-color:#C5D8FF; color:#1A56CC }
+.log-entry.k1 { background:#FFF8E1; border-color:#FFE0B2; color:#E65100 }
+.log-entry.k2 { background:#F3FBF3; border-color:#C8E6C9; color:#2E7D32 }
+.log-entry.k3 { background:#F3E8FF; border-color:#E1BEE7; color:#6B21A8 }
+.log-entry.k4 { background:#FFF3E0; border-color:#FFE0B2; color:#BF360C }
+.log-entry.ev { background:#FFF3F3; border-color:#FFCDD2; color:#B31B1B }
+.log-entry.ok { background:#EBF7EC; border-color:#C8E6C9; color:#2E7D32 }
+.log-entry.warn { background:#FFFDE7; border-color:#FFE082; color:#E65100 }
+.log-entry.probe-log { background:#EEF3FF; border-color:#C5D8FF; color:#1A56CC }
+.log-entry.probe-miss-log { background:#FFF3F3; border-color:#FFCDD2; color:#B31B1B }
+
+/* ── CALLOUT ── */
+.callout-row { border-top:1px solid #EBEBEB; padding:14px 22px; background:#FAFAFA }
+.callout {
+  font-family:'JetBrains Mono',monospace;
+  font-size:11px; line-height:1.8; color:#444;
+  padding:12px 16px; border-radius:8px;
+  border:1px solid #E8E8E8; background:#FFF;
+}
+.callout.good { background:#F3FBF3; border-color:#C8E6C9 }
+.callout.bad  { background:#FFF8F8; border-color:#FFCDD2 }
+.callout.warn { background:#FFFDE7; border-color:#FFE082 }
+.callout.probe-co { background:#EEF3FF; border-color:#C5D8FF }
+.hl-r { color:#B31B1B; font-weight:700 }
+.hl-g { color:#2E7D32; font-weight:700 }
+.hl-b { color:#1A56CC; font-weight:700 }
+.hl-o { color:#E65100; font-weight:700 }
+
+/* ── CONTROLS ── */
+.controls {
+  background:#1A1A1A;
+  padding:12px 24px;
+  display:flex; align-items:center; justify-content:space-between;
+  border-radius:0 0 14px 14px;
+}
+.btn {
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.15);
+  color:#fff; font-size:12px; font-weight:600;
+  padding:7px 16px; border-radius:6px;
+  cursor:pointer; font-family:'DM Sans',sans-serif;
+  transition:all .2s; user-select:none;
+}
+.btn:hover { background:rgba(255,255,255,.18); transform:translateY(-1px) }
+.btn.primary { background:#B31B1B; border-color:#B31B1B }
+.btn.primary:hover { background:#C62828 }
+.stxt {
+  font-family:'JetBrains Mono',monospace;
+  font-size:10.5px; color:rgba(255,255,255,.4);
+}
+</style>
+</head>
+<body>
+<div class="card">
+
+<div class="hdr">
+  <h1>Cuckoo Hashing — One Table, Two Hash Functions</h1>
+  <span>← → · space</span>
+</div>
+
+<!-- PHASE BAR -->
+<div class="phase-bar">
+  <div class="phase-tab" id="phase-probe">
+    🔍 PROBE
+    <span class="phase-desc">look up keys — O(1) worst case</span>
+  </div>
+  <div class="phase-tab" id="phase-build">
+    🔨 BUILD
+    <span class="phase-desc">insert keys into the table</span>
+  </div>
+</div>
+
+<div class="prog" id="prog"></div>
+
+<div class="rehash" id="rehash">⚠ CYCLE DETECTED — CHOOSING NEW HASH FUNCTIONS AND REBUILDING TABLE</div>
+
+<div class="banner">
+  <span class="bpill" id="bpill"></span>
+  <span class="btxt" id="btxt"></span>
+</div>
+
+<div class="body">
+  <!-- LEFT -->
+  <div class="side-panel">
+    <div class="slabel" id="left-label">Current key</div>
+    <div class="key-box dim" id="key-box">
+      <div class="kb-key" id="kb-key">—</div>
+      <div class="kb-sub" id="kb-sub">—</div>
+    </div>
+
+    <div class="hash-funcs">
+      <div class="hf-title">Hash results for this key</div>
+      <div class="hf-row">
+        <span class="fn-label">h₁:</span>
+        <span class="fn-val" id="hf-h1-val">—</span>
+      </div>
+      <div class="hf-row">
+        <span class="fn-label">h₂:</span>
+        <span class="fn-val" id="hf-h2-val">—</span>
+      </div>
+    </div>
+
+    <div class="slabel">Candidate slots</div>
+    <div class="targets">
+      <div class="target-row dim" id="tr-h1">
+        <span class="fn">h₁</span>
+        <span class="slot" id="tr-h1-slot">—</span>
+        <span class="status" id="tr-h1-st">—</span>
+      </div>
+      <div class="target-row dim" id="tr-h2">
+        <span class="fn">h₂</span>
+        <span class="slot" id="tr-h2-slot">—</span>
+        <span class="status" id="tr-h2-st">—</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- CENTER -->
+  <div class="table-panel">
+    <div class="tp-label">Hash table — 8 slots · h₁ and h₂ both map into this single array</div>
+    <div class="htable" id="htable"></div>
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- RIGHT -->
+  <div class="log-panel">
+    <div class="slabel" style="margin-bottom:10px">Step-by-step log</div>
+    <div class="log-entries" id="log-entries"></div>
+  </div>
+</div>
+
+<div class="callout-row">
+  <div class="callout" id="callout"></div>
+</div>
+
+<div class="controls">
+  <div style="display:flex;gap:8px">
+    <button class="btn" id="btn-prev">◀ Prev</button>
+    <button class="btn primary" id="btn-play">⏸ Pause</button>
+    <button class="btn" id="btn-next">Next ▶</button>
+  </div>
+  <span class="stxt" id="stxt"></span>
+  <div style="display:flex;gap:8px">
+    <button class="btn" id="btn-slow">0.5×</button>
+    <button class="btn primary" id="btn-norm">1×</button>
+    <button class="btn" id="btn-fast">2×</button>
+  </div>
+</div>
+
+</div>
+
+<script>
+// ── HASH FUNCTION MAPPINGS ──
+// k=42: h₁→2, h₂→5
+// k=17: h₁→3, h₂→6
+// k=55: h₁→6, h₂→2
+// k=88: h₁→5, h₂→2
+// k=33: h₁→2, h₂→5  (same as k=42 → guarantees cycle)
+
+// Pre-filled table (after 4 successful inserts)
+const FULL_TABLE = [
+  null, null,
+  {key:'42',cls:'k0',tag:'h₁'},
+  {key:'17',cls:'k1',tag:'h₁'},
+  null,
+  {key:'88',cls:'k3',tag:'h₁'},
+  {key:'55',cls:'k2',tag:'h₁'},
+  null
+];
+
+// Separators in progress bar — indices where a separator appears BEFORE the dot
+const PHASE_BREAKS = new Set(); // computed below after STEPS defined
+
+const STEPS = [
+
+  // ════════════════════════════════════════════════════════
+  //  INTRO — show the pre-filled table
+  // ════════════════════════════════════════════════════════
+  {
+    phase:'intro',
+    pill:'INTRO', pillCls:'intro-pill',
+    txt:'<strong>Cuckoo Hashing</strong> — each key lives at one of two possible slots: h₁(k) or h₂(k). Here\'s a table with 4 keys already inserted.',
+    rehash:false,
+    leftLabel:'Current key',
+    key:{cls:'dim', key:'—', sub:'waiting'},
+    hf:{h1:'—', h2:'—'},
+    h1:{slot:'—', st:'—', cls:'dim'},
+    h2:{slot:'—', st:'—', cls:'dim'},
+    table:FULL_TABLE,
+    cellCls:{},
+    log:[],
+    callout:{cls:'', html:'This table holds 4 keys. Each was placed at either its h₁ or h₂ slot. The big win: <strong>lookups always take at most 2 checks</strong> — O(1) worst case. Let\'s see that in action first, then we\'ll rewind and show how the table was built.'}
+  },
+
+  // ════════════════════════════════════════════════════════
+  //  PROBE PHASE — lookups on the pre-filled table
+  // ════════════════════════════════════════════════════════
+
+  // ── PROBE 1a: Lookup k=42, check h₁→[2] ──
+  {
+    phase:'probe',
+    pill:'PROBE 1', pillCls:'probe-pill',
+    txt:'Lookup <strong>k=42</strong>. Compute h₁(42)→slot [2]. Check that slot…',
+    rehash:false,
+    leftLabel:'Key being looked up',
+    key:{cls:'probe-box', key:'k = 42', sub:'looking up…'},
+    hf:{h1:'h₁(42) = 2  ← check first', h2:'h₂(42) = 5'},
+    h1:{slot:'slot [2]', st:'checking…', cls:'checking'},
+    h2:{slot:'slot [5]', st:'—', cls:'dim'},
+    table:FULL_TABLE,
+    cellCls:{2:'probe-check'},
+    log:[
+      {cls:'probe-log',txt:'PROBE ▸ k=42: compute h₁(42) = 2'},
+      {cls:'probe-log',txt:'PROBE ▸ check slot [2]…'},
+    ],
+    callout:{cls:'probe-co',html:'To look up any key, we only ever need to check <strong>two slots</strong>: h₁(k) and h₂(k). We start with h₁. Slot [2] contains… let\'s see.'}
+  },
+
+  // ── PROBE 1b: k=42 found at h₁→[2] ──
+  {
+    phase:'probe',
+    pill:'PROBE 1', pillCls:'probe-pill',
+    txt:'Slot [2] contains k=42 — <strong>found in 1 check!</strong>',
+    rehash:false,
+    leftLabel:'Key being looked up',
+    key:{cls:'probe-found', key:'k = 42', sub:'FOUND ✓'},
+    hf:{h1:'h₁(42) = 2  ← found here!', h2:'h₂(42) = 5'},
+    h1:{slot:'slot [2]', st:'k=42 ✓', cls:'found'},
+    h2:{slot:'slot [5]', st:'not needed', cls:'dim'},
+    table:FULL_TABLE,
+    cellCls:{2:'probe-hit'},
+    log:[
+      {cls:'probe-log',txt:'PROBE ▸ k=42: h₁→[2] = k=42 ✓ FOUND'},
+    ],
+    callout:{cls:'probe-co',html:'<span class="hl-b">Found in 1 memory access.</span> h₁ pointed directly to the key. We didn\'t even need to check h₂. This is the best case.'}
+  },
+
+  // ── PROBE 2a: Lookup k=88, check h₁→[5] ──
+  {
+    phase:'probe',
+    pill:'PROBE 2', pillCls:'probe-pill',
+    txt:'Lookup <strong>k=88</strong>. Compute h₁(88)→slot [5]. Check that slot…',
+    rehash:false,
+    leftLabel:'Key being looked up',
+    key:{cls:'probe-box', key:'k = 88', sub:'looking up…'},
+    hf:{h1:'h₁(88) = 5  ← check first', h2:'h₂(88) = 2'},
+    h1:{slot:'slot [5]', st:'checking…', cls:'checking'},
+    h2:{slot:'slot [2]', st:'—', cls:'dim'},
+    table:FULL_TABLE,
+    cellCls:{5:'probe-check'},
+    log:[
+      {cls:'probe-log',txt:'PROBE ▸ k=42: h₁→[2] ✓ (1 check)'},
+      {cls:'probe-log',txt:'PROBE ▸ k=88: compute h₁(88) = 5'},
+      {cls:'probe-log',txt:'PROBE ▸ check slot [5]…'},
+    ],
+    callout:{cls:'probe-co',html:'h₁(88) points to slot [5]. Does it contain k=88?'}
+  },
+
+  // ── PROBE 2b: k=88 found at h₁→[5] ──
+  {
+    phase:'probe',
+    pill:'PROBE 2', pillCls:'probe-pill',
+    txt:'Slot [5] contains k=88 — <strong>found in 1 check!</strong>',
+    rehash:false,
+    leftLabel:'Key being looked up',
+    key:{cls:'probe-found', key:'k = 88', sub:'FOUND ✓'},
+    hf:{h1:'h₁(88) = 5  ← found here!', h2:'h₂(88) = 2'},
+    h1:{slot:'slot [5]', st:'k=88 ✓', cls:'found'},
+    h2:{slot:'slot [2]', st:'not needed', cls:'dim'},
+    table:FULL_TABLE,
+    cellCls:{5:'probe-hit'},
+    log:[
+      {cls:'probe-log',txt:'PROBE ▸ k=42: h₁→[2] ✓ (1 check)'},
+      {cls:'probe-log',txt:'PROBE ▸ k=88: h₁→[5] = k=88 ✓ FOUND'},
+    ],
+    callout:{cls:'probe-co',html:'<span class="hl-b">Another 1-check lookup.</span> Every key that was inserted via h₁ sits exactly at h₁\'s slot.'}
+  },
+
+  // ── PROBE 3a: Lookup k=99 (not in table), check h₁→[0] ──
+  {
+    phase:'probe',
+    pill:'PROBE 3', pillCls:'probe-pill',
+    txt:'Lookup <strong>k=99</strong> (not in table). h₁(99)→slot [0] is empty. Try h₂…',
+    rehash:false,
+    leftLabel:'Key being looked up',
+    key:{cls:'probe-box', key:'k = 99', sub:'looking up…'},
+    hf:{h1:'h₁(99) = 0  ← empty!', h2:'h₂(99) = 4  ← check next'},
+    h1:{slot:'slot [0]', st:'empty ✗', cls:'miss'},
+    h2:{slot:'slot [4]', st:'checking…', cls:'checking'},
+    table:FULL_TABLE,
+    cellCls:{0:'probe-miss-cell', 4:'probe-check'},
+    log:[
+      {cls:'probe-log',txt:'PROBE ▸ k=42: h₁→[2] ✓ (1 check)'},
+      {cls:'probe-log',txt:'PROBE ▸ k=88: h₁→[5] ✓ (1 check)'},
+      {cls:'probe-log',txt:'PROBE ▸ k=99: h₁→[0] = ∅ empty'},
+      {cls:'probe-log',txt:'PROBE ▸ k=99: try h₂→[4]…'},
+    ],
+    callout:{cls:'probe-co',html:'h₁ slot is empty — k=99 wasn\'t placed there. But it <em>could</em> be at h₂\'s slot, so we must check that too before concluding.'}
+  },
+
+  // ── PROBE 3b: h₂→[4] also empty → NOT FOUND ──
+  {
+    phase:'probe',
+    pill:'PROBE 3', pillCls:'probe-pill',
+    txt:'h₂(99)→slot [4] is also empty — <strong>k=99 is NOT in the table. 2 checks total.</strong>',
+    rehash:false,
+    leftLabel:'Key being looked up',
+    key:{cls:'probe-miss', key:'k = 99', sub:'NOT FOUND ✗'},
+    hf:{h1:'h₁(99) = 0  ← empty', h2:'h₂(99) = 4  ← empty'},
+    h1:{slot:'slot [0]', st:'empty ✗', cls:'miss'},
+    h2:{slot:'slot [4]', st:'empty ✗', cls:'miss'},
+    table:FULL_TABLE,
+    cellCls:{0:'probe-miss-cell', 4:'probe-miss-cell'},
+    log:[
+      {cls:'probe-log',txt:'PROBE ▸ k=42: h₁→[2] ✓ (1 check)'},
+      {cls:'probe-log',txt:'PROBE ▸ k=88: h₁→[5] ✓ (1 check)'},
+      {cls:'probe-miss-log',txt:'PROBE ▸ k=99: h₁→[0] ∅, h₂→[4] ∅ → MISS'},
+    ],
+    callout:{cls:'bad',html:'<span class="hl-r">Key absent — confirmed in 2 checks.</span> Both candidate slots are empty, so k=99 is <em>definitely</em> not in the table. Even misses are O(1). Now let\'s rewind and see how this table was <span class="hl-g">built</span>.'}
+  },
+
+  // ════════════════════════════════════════════════════════
+  //  BUILD PHASE — rewind, show insertions from scratch
+  // ════════════════════════════════════════════════════════
+
+  // ── BUILD 1: empty table, insert k=42 ──
+  {
+    phase:'build',
+    pill:'BUILD 1', pillCls:'build-pill',
+    txt:'Rewind to an empty table. Insert <strong>k=42</strong>. h₁(42)→slot [2] is empty — direct insert.',
+    rehash:false,
+    leftLabel:'Key being inserted',
+    key:{cls:'k0', key:'k = 42', sub:'inserting'},
+    hf:{h1:'h₁(42) = 2', h2:'h₂(42) = 5'},
+    h1:{slot:'slot [2]', st:'empty ✓', cls:'ok'},
+    h2:{slot:'slot [5]', st:'—', cls:'dim'},
+    table:[null,null,null,null,null,null,null,null],
+    cellCls:{2:'target-h1 empty'},
+    log:[],
+    callout:{cls:'', html:'Starting fresh. We always try h₁ first. Slot [2] is empty, so k=42 goes right in.'}
+  },
+
+  // ── BUILD 2: k=42 placed ──
+  {
+    phase:'build',
+    pill:'BUILD 2', pillCls:'build-pill',
+    txt:'<strong>k=42 placed at slot [2]</strong> via h₁. Done!',
+    rehash:false,
+    leftLabel:'Key being inserted',
+    key:{cls:'k0', key:'k = 42', sub:'inserted ✓'},
+    hf:{h1:'h₁(42) = 2  ← here', h2:'h₂(42) = 5'},
+    h1:{slot:'slot [2]', st:'placed ✓', cls:'ok'},
+    h2:{slot:'slot [5]', st:'not needed', cls:'dim'},
+    table:[
+      null,null,
+      {key:'42',cls:'k0',tag:'h₁'},
+      null,null,null,null,null
+    ],
+    cellCls:{2:'k0 just-in'},
+    log:[{cls:'k0',txt:'BUILD ▸ k=42 → slot [2] via h₁ ✓'}],
+    callout:{cls:'good',html:'<span class="hl-g">Direct insert.</span> h₁ was empty — no eviction needed.'}
+  },
+
+  // ── BUILD 3: Insert k=17 ──
+  {
+    phase:'build',
+    pill:'BUILD 3', pillCls:'build-pill',
+    txt:'Insert <strong>k=17</strong>. h₁(17)→slot [3] is empty — direct insert.',
+    rehash:false,
+    leftLabel:'Key being inserted',
+    key:{cls:'k1', key:'k = 17', sub:'inserting'},
+    hf:{h1:'h₁(17) = 3', h2:'h₂(17) = 6'},
+    h1:{slot:'slot [3]', st:'empty ✓', cls:'ok'},
+    h2:{slot:'slot [6]', st:'—', cls:'dim'},
+    table:[
+      null,null,
+      {key:'42',cls:'k0',tag:'h₁'},
+      null,null,null,null,null
+    ],
+    cellCls:{3:'target-h1 empty'},
+    log:[{cls:'k0',txt:'BUILD ▸ k=42 → slot [2] via h₁ ✓'}],
+    callout:{cls:'',html:'h₁(17)→slot [3] is free. Another clean insert.'}
+  },
+
+  // ── BUILD 4: k=17 placed ──
+  {
+    phase:'build',
+    pill:'BUILD 4', pillCls:'build-pill',
+    txt:'<strong>k=17 placed at slot [3]</strong> via h₁.',
+    rehash:false,
+    leftLabel:'Key being inserted',
+    key:{cls:'k1', key:'k = 17', sub:'inserted ✓'},
+    hf:{h1:'h₁(17) = 3  ← here', h2:'h₂(17) = 6'},
+    h1:{slot:'slot [3]', st:'placed ✓', cls:'ok'},
+    h2:{slot:'slot [6]', st:'not needed', cls:'dim'},
+    table:[
+      null,null,
+      {key:'42',cls:'k0',tag:'h₁'},
+      {key:'17',cls:'k1',tag:'h₁'},
+      null,null,null,null
+    ],
+    cellCls:{3:'k1 just-in'},
+    log:[
+      {cls:'k0',txt:'BUILD ▸ k=42 → slot [2] via h₁ ✓'},
+      {cls:'k1',txt:'BUILD ▸ k=17 → slot [3] via h₁ ✓'},
+    ],
+    callout:{cls:'good',html:'<span class="hl-g">Two keys, zero conflicts.</span>'}
+  },
+
+  // ── BUILD 5: Insert k=55 ──
+  {
+    phase:'build',
+    pill:'BUILD 5', pillCls:'build-pill',
+    txt:'Insert <strong>k=55</strong>. h₁(55)→slot [6] is empty — direct insert.',
+    rehash:false,
+    leftLabel:'Key being inserted',
+    key:{cls:'k2', key:'k = 55', sub:'inserting'},
+    hf:{h1:'h₁(55) = 6', h2:'h₂(55) = 2'},
+    h1:{slot:'slot [6]', st:'empty ✓', cls:'ok'},
+    h2:{slot:'slot [2]', st:'—', cls:'dim'},
+    table:[
+      null,null,
+      {key:'42',cls:'k0',tag:'h₁'},
+      {key:'17',cls:'k1',tag:'h₁'},
+      null,null,null,null
+    ],
+    cellCls:{6:'target-h1 empty'},
+    log:[
+      {cls:'k0',txt:'BUILD ▸ k=42 → slot [2] via h₁ ✓'},
+      {cls:'k1',txt:'BUILD ▸ k=17 → slot [3] via h₁ ✓'},
+    ],
+    callout:{cls:'',html:'h₁(55)→slot [6] is free. Note h₂(55)→slot [2] holds k=42, but we don\'t need h₂.'}
+  },
+
+  // ── BUILD 6: k=55 placed ──
+  {
+    phase:'build',
+    pill:'BUILD 6', pillCls:'build-pill',
+    txt:'<strong>k=55 placed at slot [6]</strong> via h₁.',
+    rehash:false,
+    leftLabel:'Key being inserted',
+    key:{cls:'k2', key:'k = 55', sub:'inserted ✓'},
+    hf:{h1:'h₁(55) = 6  ← here', h2:'h₂(55) = 2'},
+    h1:{slot:'slot [6]', st:'placed ✓', cls:'ok'},
+    h2:{slot:'slot [2]', st:'not needed', cls:'dim'},
+    table:[
+      null,null,
+      {key:'42',cls:'k0',tag:'h₁'},
+      {key:'17',cls:'k1',tag:'h₁'},
+      null,null,
+      {key:'55',cls:'k2',tag:'h₁'},
+      null
+    ],
+    cellCls:{6:'k2 just-in'},
+    log:[
+      {cls:'k0',txt:'BUILD ▸ k=42 → slot [2] via h₁ ✓'},
+      {cls:'k1',txt:'BUILD ▸ k=17 → slot [3] via h₁ ✓'},
+      {cls:'k2',txt:'BUILD ▸ k=55 → slot [6] via h₁ ✓'},
+    ],
+    callout:{cls:'good',html:'<span class="hl-g">Three keys, still no conflicts.</span>'}
+  },
+
+  // ── BUILD 7: Insert k=88 ──
+  {
+    phase:'build',
+    pill:'BUILD 7', pillCls:'build-pill',
+    txt:'Insert <strong>k=88</strong>. h₁(88)→slot [5] is empty — direct insert.',
+    rehash:false,
+    leftLabel:'Key being inserted',
+    key:{cls:'k3', key:'k = 88', sub:'inserting'},
+    hf:{h1:'h₁(88) = 5', h2:'h₂(88) = 2'},
+    h1:{slot:'slot [5]', st:'empty ✓', cls:'ok'},
+    h2:{slot:'slot [2]', st:'—', cls:'dim'},
+    table:[
+      null,null,
+      {key:'42',cls:'k0',tag:'h₁'},
+      {key:'17',cls:'k1',tag:'h₁'},
+      null,null,
+      {key:'55',cls:'k2',tag:'h₁'},
+      null
+    ],
+    cellCls:{5:'target-h1 empty'},
+    log:[
+      {cls:'k0',txt:'BUILD ▸ k=42 → slot [2] via h₁ ✓'},
+      {cls:'k1',txt:'BUILD ▸ k=17 → slot [3] via h₁ ✓'},
+      {cls:'k2',txt:'BUILD ▸ k=55 → slot [6] via h₁ ✓'},
+    ],
+    callout:{cls:'',html:'h₁(88)→slot [5] is free. This gives us the table we started with.'}
+  },
+
+  // ── BUILD 8: k=88 placed — matches the pre-filled table! ──
+  {
+    phase:'build',
+    pill:'BUILD 8', pillCls:'build-pill',
+    txt:'<strong>k=88 placed at slot [5]</strong>. This is the table we probed earlier! 4 keys, 0 evictions.',
+    rehash:false,
+    leftLabel:'Key being inserted',
+    key:{cls:'k3', key:'k = 88', sub:'inserted ✓'},
+    hf:{h1:'h₁(88) = 5  ← here', h2:'h₂(88) = 2'},
+    h1:{slot:'slot [5]', st:'placed ✓', cls:'ok'},
+    h2:{slot:'slot [2]', st:'not needed', cls:'dim'},
+    table:FULL_TABLE,
+    cellCls:{5:'k3 just-in'},
+    log:[
+      {cls:'k0',txt:'BUILD ▸ k=42 → slot [2] via h₁ ✓'},
+      {cls:'k1',txt:'BUILD ▸ k=17 → slot [3] via h₁ ✓'},
+      {cls:'k2',txt:'BUILD ▸ k=55 → slot [6] via h₁ ✓'},
+      {cls:'k3',txt:'BUILD ▸ k=88 → slot [5] via h₁ ✓'},
+    ],
+    callout:{cls:'good',html:'<span class="hl-g">Four direct inserts — the easy case.</span> This is the table we probed in the first section. Now let\'s see what happens when both slots are occupied…'}
+  },
+
+  // ════════════════════════════════════════════════════════
+  //  BUILD (continued) — eviction chain & cycle
+  // ════════════════════════════════════════════════════════
+
+  // ── BUILD 9: Insert k=33, both slots occupied ──
+  {
+    phase:'build',
+    pill:'BUILD 9', pillCls:'build-pill',
+    txt:'Insert <strong>k=33</strong>. h₁→slot [2] has k=42, h₂→slot [5] has k=88. <strong>Both occupied!</strong>',
+    rehash:false,
+    leftLabel:'Key being inserted',
+    key:{cls:'k4', key:'k = 33', sub:'inserting — conflict!'},
+    hf:{h1:'h₁(33) = 2  ← has k=42', h2:'h₂(33) = 5  ← has k=88'},
+    h1:{slot:'slot [2]', st:'occupied ✗', cls:'bad'},
+    h2:{slot:'slot [5]', st:'occupied ✗', cls:'bad'},
+    table:FULL_TABLE,
+    cellCls:{2:'k0 target-h1', 5:'k3 target-h2'},
+    log:[
+      {cls:'ev',txt:'BUILD ▸ k=33: h₁→[2] occupied (k=42)'},
+      {cls:'ev',txt:'BUILD ▸ k=33: h₂→[5] occupied (k=88)'},
+    ],
+    callout:{cls:'bad',html:'Both candidate slots are full. Like a <strong>cuckoo bird</strong>, k=33 will <em>evict</em> the key at h₁\'s slot and take its place. The evicted key must then find its own alternate home.'}
+  },
+
+  // ── BUILD 10: Evict k=42, place k=33 ──
+  {
+    phase:'build',
+    pill:'BUILD 10', pillCls:'build-pill',
+    txt:'Evict <strong>k=42</strong> from slot [2]. Place k=33 there. k=42 tries its alternate h₂→slot [5]…',
+    rehash:false,
+    leftLabel:'Displaced key',
+    key:{cls:'evict', key:'k = 42', sub:'displaced → tries h₂→[5]'},
+    hf:{h1:'h₁(42) = 2  ← evicted', h2:'h₂(42) = 5  ← try next'},
+    h1:{slot:'slot [2]', st:'taken by k=33', cls:'bad'},
+    h2:{slot:'slot [5]', st:'occupied ✗', cls:'bad'},
+    table:[
+      null,null,
+      {key:'33',cls:'k4',tag:'h₁'},
+      {key:'17',cls:'k1',tag:'h₁'},
+      null,
+      {key:'88',cls:'k3',tag:'h₁'},
+      {key:'55',cls:'k2',tag:'h₁'},
+      null
+    ],
+    cellCls:{2:'just-in', 5:'k3 evicting'},
+    log:[
+      {cls:'ev',txt:'BUILD ▸ k=33 evicts k=42 from slot [2]'},
+      {cls:'k4',txt:'BUILD ▸ k=33 → slot [2] via h₁'},
+      {cls:'ev',txt:'BUILD ▸ k=42 displaced → tries h₂→[5]'},
+      {cls:'ev',txt:'BUILD ▸ slot [5] has k=88 — evict again!'},
+    ],
+    callout:{cls:'bad',html:'k=33 takes slot [2]. Displaced k=42 tries h₂(42)→slot [5] — but k=88 is there! <strong>The eviction chain continues.</strong>'}
+  },
+
+  // ── BUILD 11: Evict k=88, place k=42, CYCLE ──
+  {
+    phase:'build',
+    pill:'BUILD 11', pillCls:'build-pill',
+    txt:'Evict <strong>k=88</strong> from slot [5]. Place k=42 there. k=88 tries h₂→slot [2] — <strong>CYCLE!</strong>',
+    rehash:false,
+    leftLabel:'Displaced key',
+    key:{cls:'evict', key:'k = 88', sub:'CYCLE — h₂→[2] visited!'},
+    hf:{h1:'h₁(88) = 5  ← evicted', h2:'h₂(88) = 2  ← already visited!'},
+    h1:{slot:'slot [5]', st:'taken by k=42', cls:'bad'},
+    h2:{slot:'slot [2]', st:'visited! ↺', cls:'bad'},
+    table:[
+      null,null,
+      {key:'33',cls:'k4',tag:'h₁'},
+      {key:'17',cls:'k1',tag:'h₁'},
+      null,
+      {key:'42',cls:'k0',tag:'h₂'},
+      {key:'55',cls:'k2',tag:'h₁'},
+      null
+    ],
+    cellCls:{5:'k0 just-in', 2:'cycle'},
+    log:[
+      {cls:'ev',txt:'BUILD ▸ k=33 evicts k=42 → slot [2]'},
+      {cls:'ev',txt:'BUILD ▸ k=42 evicts k=88 → slot [5]'},
+      {cls:'ev',txt:'BUILD ▸ k=88 tries h₂→[2] ← visited!'},
+      {cls:'warn',txt:'⚠ CYCLE DETECTED'},
+    ],
+    callout:{cls:'bad',html:'<span class="hl-r">Cycle detected!</span> k=88\'s alternate slot h₂(88)→[2] is where the chain started. Loop: <strong>[2] → [5] → [2] → …</strong> No progress possible with these hash functions.'}
+  },
+
+  // ── BUILD 12: REHASH ──
+  {
+    phase:'build',
+    pill:'REHASH', pillCls:'rehash-pill',
+    txt:'<strong>Rehash!</strong> Choose new h₁\' and h₂\', rebuild the entire table from scratch.',
+    rehash:true,
+    leftLabel:'Rebuilding…',
+    key:{cls:'dim', key:'—', sub:'rebuilding table…'},
+    hf:{h1:'h₁\' = new function', h2:'h₂\' = new function'},
+    h1:{slot:'—', st:'—', cls:'dim'},
+    h2:{slot:'—', st:'—', cls:'dim'},
+    table:[null,null,null,null,null,null,null,null],
+    cellCls:{},
+    log:[
+      {cls:'warn',txt:'⚠ Cycle: [2]→[5]→[2]→…'},
+      {cls:'warn',txt:'Picking new h₁\' and h₂\'…'},
+      {cls:'ok',txt:'Re-inserting all 5 keys with new functions'},
+      {cls:'ok',txt:'Lookups remain O(1) worst-case always'},
+    ],
+    callout:{cls:'warn',html:'<strong>Rehashing</strong> picks entirely new hash functions and re-inserts every key. Cycles are rare when the load factor is below ~50%. The expected number of rehashes is O(1) amortized. <strong>Lookups are always O(1) worst-case</strong> — that guarantee never changes.'}
+  },
+];
+
+// Compute phase break indices (where phase changes)
+for (let i = 1; i < STEPS.length; i++) {
+  if (STEPS[i].phase !== STEPS[i-1].phase) PHASE_BREAKS.add(i);
+}
+
+// ── Render ───────────────────────────────────────────────
+function render(s) {
+  const st = STEPS[s];
+
+  // phase bar
+  const pb = document.getElementById('phase-build');
+  const pp = document.getElementById('phase-probe');
+  pb.className = 'phase-tab' + (st.phase === 'build' ? ' active-build' : '');
+  pp.className = 'phase-tab' + (st.phase === 'probe' ? ' active-probe' : '');
+
+  // progress dots with phase separators
+  let ph = '';
+  for (let i = 0; i < STEPS.length; i++) {
+    if (PHASE_BREAKS.has(i)) ph += '<div class="psep"></div>';
+    const sp = STEPS[i].phase;
+    let cls = 'pdot';
+    if (i < s) {
+      cls += ' done-' + sp;
+    } else if (i === s) {
+      cls += ' cur-' + sp;
+    }
+    ph += `<div class="${cls}" onclick="jump(${i})"></div>`;
+  }
+  ph += `<span class="plab">step ${s + 1} / ${STEPS.length}</span>`;
+  document.getElementById('prog').innerHTML = ph;
+
+  // banner
+  const bpill = document.getElementById('bpill');
+  bpill.textContent = st.pill;
+  bpill.className = 'bpill ' + (st.pillCls || 'intro-pill');
+  document.getElementById('btxt').innerHTML = st.txt;
+  document.getElementById('stxt').textContent = `step ${s + 1} / ${STEPS.length}`;
+  document.getElementById('rehash').style.display = st.rehash ? 'block' : 'none';
+
+  // left panel label
+  document.getElementById('left-label').textContent = st.leftLabel || 'Current key';
+
+  // key box
+  const kb = document.getElementById('key-box');
+  kb.className = 'key-box ' + (st.key.cls || 'dim');
+  document.getElementById('kb-key').textContent = st.key.key;
+  document.getElementById('kb-sub').textContent = st.key.sub;
+
+  // hash function display
+  document.getElementById('hf-h1-val').textContent = st.hf.h1;
+  document.getElementById('hf-h2-val').textContent = st.hf.h2;
+
+  // target rows
+  const trh1 = document.getElementById('tr-h1');
+  trh1.className = 'target-row ' + (st.h1.cls || 'dim');
+  document.getElementById('tr-h1-slot').textContent = st.h1.slot;
+  document.getElementById('tr-h1-st').textContent = st.h1.st;
+  const trh2 = document.getElementById('tr-h2');
+  trh2.className = 'target-row ' + (st.h2.cls || 'dim');
+  document.getElementById('tr-h2-slot').textContent = st.h2.slot;
+  document.getElementById('tr-h2-st').textContent = st.h2.st;
+
+  // table
+  const ht = document.getElementById('htable');
+  ht.innerHTML = '';
+  for (let i = 0; i < 8; i++) {
+    const entry = st.table[i];
+    const extra = st.cellCls && st.cellCls[i] ? st.cellCls[i] : '';
+    const isEmpty = entry === null;
+    let cls = 'hcell ' + (isEmpty ? 'empty ' : '') + (entry && entry.cls ? entry.cls + ' ' : '') + extra;
+    const row = document.createElement('div');
+    row.className = 'hrow';
+    row.innerHTML = `<span class="hidx">[${i}]</span><div class="${cls.trim()}">
+      <span class="hval">${isEmpty ? '∅' : 'k=' + entry.key}</span>
+      <span class="htag">${isEmpty ? '' : entry.tag || ''}</span>
+    </div>`;
+    ht.appendChild(row);
+  }
+
+  // log
+  const le = document.getElementById('log-entries');
+  le.innerHTML = '';
+  if (!st.log || st.log.length === 0) {
+    le.innerHTML = '<div style="font-family:JetBrains Mono,monospace;font-size:10px;color:#CCC;padding:6px 0">— waiting for first operation —</div>';
+  } else {
+    st.log.forEach(e => {
+      const d = document.createElement('div');
+      d.className = 'log-entry ' + (e.cls || '');
+      d.textContent = e.txt;
+      le.appendChild(d);
+    });
+  }
+
+  // callout
+  const co = document.getElementById('callout');
+  co.className = 'callout ' + (st.callout.cls || '');
+  co.innerHTML = st.callout.html;
+}
+
+// ── Playback ─────────────────────────────────────────────
+let cur = 0, playing = true, speed = 3200, timer = null;
+
+function jump(i) { cur = i; render(cur); if (playing) start(); }
+function adv() { cur = (cur + 1) % STEPS.length; render(cur); }
+function ret() { cur = (cur - 1 + STEPS.length) % STEPS.length; render(cur); }
+function start() { clearInterval(timer); timer = setInterval(adv, speed); }
+function stop() { clearInterval(timer); }
+
+document.getElementById('btn-play').onclick = () => {
+  playing = !playing;
+  document.getElementById('btn-play').textContent = playing ? '⏸ Pause' : '▶ Play';
+  playing ? start() : stop();
+};
+document.getElementById('btn-next').onclick = () => { adv(); if (playing) start(); };
+document.getElementById('btn-prev').onclick = () => { ret(); if (playing) start(); };
+
+function spd(s, id) {
+  speed = s;
+  ['btn-slow','btn-norm','btn-fast'].forEach(b => document.getElementById(b).classList.remove('primary'));
+  document.getElementById(id).classList.add('primary');
+  if (playing) start();
+}
+document.getElementById('btn-slow').onclick = () => spd(5000, 'btn-slow');
+document.getElementById('btn-norm').onclick = () => spd(3200, 'btn-norm');
+document.getElementById('btn-fast').onclick = () => spd(1600, 'btn-fast');
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') { adv(); if (playing) start(); }
+  if (e.key === 'ArrowLeft') { ret(); if (playing) start(); }
+  if (e.key === ' ') { e.preventDefault(); document.getElementById('btn-play').click(); }
+});
+
+render(0);
+start();
+</script>
+</body>
+</html>
